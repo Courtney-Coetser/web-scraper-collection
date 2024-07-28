@@ -1,37 +1,69 @@
 import requests
 from bs4 import BeautifulSoup
 import csv
+import os
+import time
 
-# URL of the webpage to scrape
-url = 'https://subdomainfinder.c99.nl/overview'  # Replace with the URL of the page you want to scrape
+# URL of the page to scrape
+url = 'https://subdomainfinder.c99.nl/overview'  # Replace with the actual URL
 
-# Make a request to fetch the content of the page
-response = requests.get(url)
-if response.status_code == 200:
-    page_content = response.text
-else:
-    print("Failed to retrieve the page.")
-    exit()
+# Path to the CSV file
+csv_file_path = 'titles.csv'
 
-# Parse the page content with BeautifulSoup
-soup = BeautifulSoup(page_content, 'html.parser')
+# Time to wait between scans (in seconds)
+scan_interval = 60  # Adjust as needed
 
-# Find all <a> tags
-a_tags = soup.find_all('a')
+def fetch_titles_from_page(url):
+    try:
+        # Fetch the content of the page
+        response = requests.get(url)
+        response.raise_for_status()  # Check for request errors
 
-# Extract titles and format them
-titles = []
-for tag in a_tags:
-    title = tag.get('title')
-    if title:
-        titles.append(title)
+        # Parse the HTML content
+        soup = BeautifulSoup(response.text, 'html.parser')
 
-# Write titles to a CSV file
-csv_file = 'titles.csv'  # Name of the CSV file to save
-with open(csv_file, 'w', newline='', encoding='utf-8') as file:
-    writer = csv.writer(file)
-    writer.writerow(['Title'])  # Write header
-    for title in titles:
-        writer.writerow([title])
+        # Find all 'a' tags
+        a_tags = soup.find_all('a')
 
-print(f"Extracted titles have been saved to {csv_file}.")
+        # Extract titles
+        titles = set()
+        for tag in a_tags:
+            title = tag.get('title')
+            if title:
+                titles.add(title.strip())
+
+        return titles
+
+    except requests.RequestException as e:
+        print(f"Error fetching page: {e}")
+        return set()
+
+def update_csv_file(titles, csv_file_path):
+    # Read existing titles from CSV file
+    existing_titles = set()
+    if os.path.exists(csv_file_path):
+        with open(csv_file_path, mode='r', newline='', encoding='utf-8') as file:
+            reader = csv.reader(file)
+            existing_titles = set(row[0] for row in reader)
+
+    # Append new titles to the CSV file
+    with open(csv_file_path, mode='a', newline='', encoding='utf-8') as file:
+        writer = csv.writer(file)
+        for title in titles:
+            if title not in existing_titles:
+                writer.writerow([title])
+
+def main():
+    while True:
+        titles = fetch_titles_from_page(url)
+        if titles:
+            update_csv_file(titles, csv_file_path)
+            print(f"Updated {csv_file_path} with new titles.")
+        else:
+            print("No new titles found.")
+        
+        print(f"Waiting {scan_interval} seconds before next scan...")
+        time.sleep(scan_interval)
+
+if __name__ == "__main__":
+    main()
